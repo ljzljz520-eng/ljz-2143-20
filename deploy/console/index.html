@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>C 端窗口交付验证器</title>
+<style>
+:root{--bg:#0f172a;--panel:#111c33;--muted:#94a3b8;--line:#24324d;--ok:#22c55e;--bad:#f43f5e;--warn:#f59e0b;--info:#38bdf8;--text:#e5e7eb}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}header{padding:20px 24px;border-bottom:1px solid var(--line);background:#0b1222}h1{margin:0;font-size:22px}h2{font-size:16px;margin:0 0 12px}.wrap{display:grid;grid-template-columns:420px 1fr;gap:16px;padding:16px}.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}label{display:block;color:var(--muted);font-size:12px;margin:8px 0 4px}input,select{width:100%;padding:8px;background:#0b1222;color:var(--text);border:1px solid #334155;border-radius:6px}button{background:#2563eb;color:white;border:0;border-radius:6px;padding:9px 12px;margin-top:10px;cursor:pointer}button.secondary{background:#334155}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.pill{display:inline-block;border-radius:999px;padding:2px 8px;font-size:12px;margin:2px;background:#1e293b}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}.info{color:var(--info)}.muted{color:var(--muted)}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border-bottom:1px solid var(--line);padding:7px;text-align:left;vertical-align:top}th{color:var(--muted);font-weight:600}pre{white-space:pre-wrap;word-break:break-all;background:#08111f;border:1px solid var(--line);border-radius:6px;padding:10px;max-height:320px;overflow:auto}.row{display:flex;gap:6px;flex-wrap:wrap}.phase{font-weight:700}.help{color:var(--muted);font-size:12px;margin:6px 0}.notice{border-left:3px solid var(--warn);padding:8px 10px;background:#1a2030;border-radius:4px;margin:8px 0}
+</style>
+</head>
+<body>
+<header><h1>C 端窗口交付验证器</h1><div class="muted">注册设备能力、配置通道和批次；只有首帧验证成功才显示升级完成。</div></header>
+<div class="wrap">
+<section>
+<div class="card"><h2>1. 登记目标设备能力</h2><div class="grid2"><input id="dId" placeholder="设备 ID，如 bench-clean"><input id="dName" placeholder="显示名称"></div><div class="grid2"><input id="dArch" placeholder="架构 x86_64" value="x86_64"><select id="dDisplay"><option value="unknown">显示器：不预设</option><option value="true">控制台声明可用（仍需探测）</option><option value="false">无头/不可用</option></select></div><label>控制台能力登记（JSON；不能替代真实探测）</label><input id="dCaps" value='{"owner":"qa","notes":"clean HOME acceptance"}'><button onclick="registerDevice()">登记/更新设备</button><div id="deviceMsg" class="help"></div></div>
+<div class="card"><h2>2. 配置发行通道</h2><input id="cName" value="fixture" placeholder="通道名"><div class="grid2"><input id="cApp" value="visual-window"><input id="cMin" type="number" value="1" title="最小客户端版本"></div><label><input id="cActive" type="checkbox" checked style="width:auto"> 通道激活</label><button onclick="saveChannel()">保存通道</button></div>
+<div class="card"><h2>3. 创建升级批次</h2><input id="bName" value="acceptance"><input id="bChannel" value="fixture"><label>设备 ID（逗号分隔）</label><input id="bDevices" value="bench-clean"><button onclick="createBatch()">创建并加入设备</button></div>
+<div class="card"><h2>4. 发布构建产物</h2><div class="help">先运行 tools/build_releases.py，再把 tar 路径发布到数据库。</div><input id="rPath" value="dist/release/visual-window_1.0.0_fixture_linux_bundled.tar"><button onclick="publishRelease()">发布产物</button><button class="secondary" onclick="loadState()">刷新</button><pre id="result"></pre></div>
+</section>
+<section>
+<div class="notice">阶段语义：<b>downloaded</b> 只代表字节和校验完成；必须进入 <b>installed → first_frame_verified</b> 才是升级完成。若失败则为 <b>rollback_complete</b>。</div>
+<div class="card"><h2>设备探测与升级状态</h2><div id="devices"></div></div>
+<div class="card"><h2>构建指纹 / 体积与依赖选择</h2><div id="releases"></div></div>
+<div class="card"><h2>通道与批次</h2><div id="configs"></div></div>
+</section>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+async function api(path,opts={}){
+  const res=await fetch(path,{headers:{'content-type':'application/json'},...opts});
+  const data=await res.json().catch(()=>({error:'invalid JSON'}));
+  if(!res.ok) throw new Error(data.error||res.status);
+  return data;
+}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+async function registerDevice(){
+  let caps={};try{caps=JSON.parse($('dCaps').value||'{}')}catch(e){$('deviceMsg').textContent='能力 JSON 无效';return}
+  caps.displayDeclared=$('dDisplay').value==='true'?true:($('dDisplay').value==='false'?false:null);
+  const r=await api('/api/admin/devices',{method:'POST',body:JSON.stringify({id:$('dId').value.trim(),name:$('dName').value.trim(),arch:$('dArch').value,capabilities:caps})});
+  $('deviceMsg').textContent='已登记 '+r.id;loadState();
+}
+async function saveChannel(){await api('/api/admin/channels',{method:'POST',body:JSON.stringify({appId:$('cApp').value,name:$('cName').value,minClientVersion:Number($('cMin').value),active:$('cActive').checked})});loadState();}
+async function createBatch(){await api('/api/admin/batches',{method:'POST',body:JSON.stringify({name:$('bName').value,appId:$('cApp').value,channel:$('bChannel').value,deviceIds:$('bDevices').value.split(',').map(x=>x.trim()).filter(Boolean)})});loadState();}
+async function publishRelease(){const r=await api('/api/admin/releases/publish',{method:'POST',body:JSON.stringify({path:$('rPath').value})});$('result').textContent=JSON.stringify(r,null,2);loadState();}
+function badge(ok){return ok===true?'<span class="ok">通过</span>':ok===false?'<span class="bad">失败</span>':'<span class="muted">未知</span>'}
+function phaseClass(p){if(p==='first_frame_verified')return 'ok';if(String(p||'').includes('fail')||String(p||'').includes('blocked'))return 'bad';if(['download_verified','installed'].includes(p))return 'warn';return 'info'}
+function probeTable(p){if(!p)return '<span class="muted">尚无探测结果</span>';const d=p.display||{},f=p.fonts||{},paths=p.paths||{},os=p.os||{};return `<table><tr><th>架构/系统</th><td>${esc(os.arch)} ${esc(os.kernel)}</td></tr>
+<tr><th>显示器</th><td>${badge(d.available)} ${esc(d.reason||'')} DISPLAY=${esc(d.display)}</td></tr>
+<tr><th>图形后端</th><td>${Object.entries(d.backends||{}).map(([k,v])=>`<span class="pill">${esc(k)}:${v.available?'✓':'×'}</span>`).join('')||'<span class="muted">未探测到</span>'}</td></tr>
+<tr><th>缩放/DPI</th><td>${esc(d.scale?.method||'unknown')}: ${esc(d.scale?.scale)}/DPI ${esc(d.scale?.dpi)}</td></tr>
+<tr><th>字体</th><td>可用族：${esc((f.availableFamilies||[]).join(', ')||'无')}<br>结论：${esc(f.conclusion)}</td></tr>
+<tr><th>安装目录</th><td>${esc(paths.installRoot?.path)} 可写 ${badge(paths.installRoot?.writable)} 可用 ${esc(paths.installRoot?.freeBytes)} bytes</td></tr>
+<tr><th>HOME/Cache/State</th><td>HOME=${esc(paths.home?.path)} 可写 ${badge(paths.home?.writable)}；cache ${badge(paths.cache?.writable)}；state ${badge(paths.state?.writable)}</td></tr></table>`}
+function reports(dev){return (dev.reports||[]).map(r=>`<tr><td>${new Date(r.created_at*1000).toLocaleTimeString()}</td><td class="phase ${phaseClass(r.phase)}">${esc(r.phase)}</td><td>${esc(r.status)}</td><td>${esc((r.detail&&(r.detail.message||r.detail.reason||r.detail.bytesDownloaded))||'')}</td></tr>`).join('')}
+function renderDevices(ds){$('devices').innerHTML=ds.map(d=>{const complete=(d.reports||[]).some(r=>r.phase==='first_frame_verified'&&r.status==='success');const downloaded=(d.reports||[]).some(r=>r.phase==='download_verified');return `<h2>${esc(d.name)} <span class="muted">${esc(d.id)}</span> ${complete?'<span class="pill ok">升级完成：首帧已验证</span>':downloaded?'<span class="pill warn">已下载，尚未完成</span>':'<span class="pill">未完成</span>'}</h2>${probeTable(d.latestProbe)}<table><tr><th>时间</th><th>阶段</th><th>状态</th><th>信息</th></tr>${reports(d)}</table><div class="help">服务端选包：${esc(d.assignment?.reason||'未分配')} ${esc(d.assignment?.policy||'')}</div>`}).join('')||'<div class="muted">无设备</div>'}
+function renderReleases(rs){$('releases').innerHTML='<table><tr><th>版本/通道</th><th>依赖</th><th>体积</th><th>绝对路径泄漏</th><th>构建指纹</th></tr>'+rs.map(r=>`<tr><td>${esc(r.version)} / ${esc(r.channel)}</td><td>${esc(r.dependency_policy)}</td><td>${r.size} bytes</td><td>${(r.fingerprint.absolutePathLeak||[]).length?'<span class="bad">'+esc(r.fingerprint.absolutePathLeak.join(','))+'</span>':'<span class="ok">无</span>'}</td><td><details><summary>digest</summary><pre>${esc(JSON.stringify(r.fingerprint,null,2))}</pre></details></td></tr>`).join('')+'</table>'}
+function renderConfigs(s){$('configs').innerHTML='<div class="row"><h2 style="flex:1">通道</h2></div><table><tr><th>应用</th><th>通道</th><th>激活</th><th>最低客户端</th></tr>'+s.channels.map(c=>`<tr><td>${esc(c.app_id)}</td><td>${esc(c.name)}</td><td>${c.active?'是':'否'}</td><td>${c.min_client_version}</td></tr>`).join('')+'</table><h2>批次</h2>'+s.batches.map(b=>`<span class="pill">${esc(b.name)} → ${esc(b.channel)}: ${esc(b.deviceIds.join(','))}</span>`).join('')}
+async function loadState(){try{const s=await api('/api/admin/state');renderDevices(s.devices);renderReleases(s.releases);renderConfigs(s);}catch(e){$('result').textContent=String(e)}}
+loadState();setInterval(loadState,4000);
+</script>
+</body>
+</html>

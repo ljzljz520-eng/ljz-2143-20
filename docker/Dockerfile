@@ -14,6 +14,7 @@ RUN apt-get update \
        novnc \
        websockify \
        x11-utils \
+       patchelf \
        ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 

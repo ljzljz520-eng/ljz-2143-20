@@ -1,0 +1,98 @@
+{
+    "display": {
+        "available": false,
+        "backends": {
+            "wayland": {
+                "available": false,
+                "probe": "XDG_RUNTIME_DIR socket",
+                "socket": "",
+                "waylandDisplay": ""
+            },
+            "x11": {
+                "available": false,
+                "display": "",
+                "probe": "xdpyinfo/socket; never assumed from documentation",
+                "socketProbed": true
+            }
+        },
+        "commands": {},
+        "display": "",
+        "reason": "DISPLAY is not set",
+        "scale": {
+            "dpi": null,
+            "method": "unavailable",
+            "scale": null
+        }
+    },
+    "fonts": {
+        "availableFamilies": [
+            "DejaVu Sans"
+        ],
+        "bundled": [],
+        "conclusion": "all required fonts observed",
+        "missing": [],
+        "probe": "fc-match/fc-scan and file existence",
+        "requiredFamilies": []
+    },
+    "libraries": {
+        "available": [
+            "libX11.so.6",
+            "libc.so.6",
+            "libfontconfig.so.1",
+            "libfreetype.so.6"
+        ],
+        "conclusion": "required system components observed",
+        "error": "",
+        "ldconfigAvailable": true,
+        "missing": [],
+        "required": []
+    },
+    "network": {
+        "hostname": "af2cdd1ff40c",
+        "serverReachability": "checked during HTTP calls"
+    },
+    "os": {
+        "arch": "aarch64",
+        "glibc": "2.36",
+        "kernel": "6.12.65-linuxkit",
+        "platform": "Linux-6.12.65-linuxkit-aarch64-with-glibc2.36",
+        "system": "Linux"
+    },
+    "paths": {
+        "cache": {
+            "exists": false,
+            "freeBytes": 445972586496,
+            "path": "/tmp/vdv-probe-home/.cache",
+            "totalBytes": 485473984512,
+            "usedBytes": 14765441024,
+            "writable": true
+        },
+        "home": {
+            "exists": true,
+            "freeBytes": 445972594688,
+            "path": "/tmp/vdv-probe-home",
+            "totalBytes": 485473984512,
+            "usedBytes": 14765432832,
+            "writable": true
+        },
+        "installRoot": {
+            "exists": false,
+            "freeBytes": 445972590592,
+            "path": "/tmp/vdv-probe-install",
+            "totalBytes": 485473984512,
+            "usedBytes": 14765436928,
+            "writable": true
+        },
+        "state": {
+            "exists": false,
+            "freeBytes": 445972578304,
+            "path": "/tmp/vdv-probe-home/.local/state",
+            "totalBytes": 485473984512,
+            "usedBytes": 14765449216,
+            "writable": true
+        }
+    },
+    "probeTime": 1791160358,
+    "requirementsProbed": {},
+    "schemaVersion": 2
+}

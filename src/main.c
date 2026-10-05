@@ -1,5 +1,7 @@
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
@@ -34,6 +36,79 @@ static void shutdown_sdl(void) {
     SDL_Quit();
 }
 
+static int parse_smoke_frames(void) {
+    const char *value = getenv("VDV_SMOKE_FRAMES");
+    if (value == NULL || value[0] == '\0') {
+        return 0;
+    }
+
+    char *end = NULL;
+    long parsed = strtol(value, &end, 10);
+    if (end == value || *end != '\0' || parsed < 0) {
+        return 0;
+    }
+    if (parsed > 1000000L) {
+        parsed = 1000000L;
+    }
+    return (int)parsed;
+}
+
+static void json_escape(FILE *out, const char *value) {
+    if (value == NULL) {
+        fputs("null", out);
+        return;
+    }
+    fputc('"', out);
+    for (const unsigned char *p = (const unsigned char *)value; *p != '\0'; ++p) {
+        unsigned char c = *p;
+        switch (c) {
+            case '"': fputs("\\\"", out); break;
+            case '\\': fputs("\\\\", out); break;
+            case '\n': fputs("\\n", out); break;
+            case '\r': fputs("\\r", out); break;
+            case '\t': fputs("\\t", out); break;
+            default:
+                if (c < 0x20) {
+                    fprintf(out, "\\u%04x", c);
+                } else {
+                    fputc((int)c, out);
+                }
+        }
+    }
+    fputc('"', out);
+}
+
+static void write_ready_marker(SDL_Window *window, SDL_Renderer *renderer) {
+    const char *path = getenv("VDV_FIRST_FRAME_FILE");
+    if (path == NULL || path[0] == '\0') {
+        return;
+    }
+
+    char driver[64] = "unknown";
+    SDL_RendererInfo info;
+    if (SDL_GetRendererInfo(renderer, &info) == 0 && info.name != NULL) {
+        snprintf(driver, sizeof(driver), "%s", info.name);
+    }
+
+    int width = 0;
+    int height = 0;
+    SDL_GetWindowSize(window, &width, &height);
+
+    FILE *marker = fopen(path, "w");
+    if (marker == NULL) {
+        return;
+    }
+
+    fprintf(marker,
+        "{\"ok\":true,\"driver\":");
+    json_escape(marker, driver);
+    fprintf(marker, ",\"width\":%d,\"height\":%d}\n",
+        width,
+        height
+    );
+    fclose(marker);
+}
+
 int main(void) {
     if (!init_sdl()) {
         return 1;
@@ -53,6 +128,8 @@ int main(void) {
     }
 
     bool running = true;
+    int presented_frames = 0;
+    const int smoke_frames = parse_smoke_frames();
     while (running) {
         SDL_Event event;
         while (SDL_PollEvent(&event) == 1) {
@@ -65,6 +142,14 @@ int main(void) {
         }
 
         renderer_draw_background(&scene, app.renderer, app.width, app.height);
+        presented_frames++;
+        if (presented_frames == 1) {
+            write_ready_marker(app.window, app.renderer);
+        }
+        if (smoke_frames > 0 && presented_frames >= smoke_frames) {
+            running = false;
+            break;
+        }
         SDL_Delay(16);
     }
 
