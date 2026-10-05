@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>WDeliver · 窗口交付控制台</title>
+<style>
+  :root { --bg:#0f172a; --card:#1e293b; --line:#334155; --txt:#e2e8f0;
+          --mut:#94a3b8; --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444;
+          --acc:#38bdf8; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt);
+         font:14px/1.5 -apple-system,"Segoe UI",sans-serif; }
+  header { padding:16px 24px; border-bottom:1px solid var(--line);
+           display:flex; align-items:baseline; gap:12px; }
+  header h1 { font-size:18px; margin:0; }
+  header span { color:var(--mut); font-size:12px; }
+  main { padding:20px 24px; display:grid; gap:20px;
+         grid-template-columns: 1fr 1fr; }
+  .card { background:var(--card); border:1px solid var(--line);
+          border-radius:10px; padding:16px; }
+  .card h2 { margin:0 0 12px; font-size:15px; }
+  .wide { grid-column: 1 / -1; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th,td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line);
+          vertical-align:top; }
+  th { color:var(--mut); font-weight:600; }
+  input,select,button,textarea { background:#0b1220; color:var(--txt);
+          border:1px solid var(--line); border-radius:6px; padding:6px 8px;
+          font:inherit; }
+  button { cursor:pointer; background:var(--acc); color:#06283d; border:none;
+           font-weight:600; }
+  button.ghost { background:transparent; color:var(--acc); border:1px solid var(--acc); }
+  label { display:block; color:var(--mut); font-size:12px; margin:8px 0 2px; }
+  .pill { display:inline-block; padding:1px 8px; border-radius:999px;
+          font-size:12px; font-weight:600; }
+  .p-ok{background:rgba(34,197,94,.15);color:var(--ok);}
+  .p-warn{background:rgba(245,158,11,.15);color:var(--warn);}
+  .p-bad{background:rgba(239,68,68,.15);color:var(--bad);}
+  .p-mut{background:rgba(148,163,184,.15);color:var(--mut);}
+  .bar { height:6px; background:#0b1220; border-radius:3px; overflow:hidden;
+         margin-top:6px; }
+  .bar > i { display:block; height:100%; background:var(--acc); width:0%; }
+  .done-banner { border:1px solid var(--ok); color:var(--ok);
+         background:rgba(34,197,94,.08); border-radius:8px; padding:8px 10px;
+         margin-top:8px; font-size:13px; }
+  .wait-banner { border:1px dashed var(--line); color:var(--mut);
+         border-radius:8px; padding:8px 10px; margin-top:8px; font-size:13px; }
+  details { margin-top:6px; }
+  summary { cursor:pointer; color:var(--mut); }
+  pre { background:#0b1220; padding:8px; border-radius:6px; overflow:auto;
+        font-size:11px; max-height:220px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .small { font-size:12px; color:var(--mut); }
+</style>
+</head>
+<body>
+<header>
+  <h1>WDeliver 窗口交付控制台</h1>
+  <span>设备能力 · 发行通道 · 升级批次 · 首帧验收</span>
+  <span id="poll" class="small"></span>
+</header>
+<main>
+  <section class="card">
+    <h2>① 登记目标设备</h2>
+    <div class="grid2">
+      <div><label>设备 ID</label><input id="dev-id" placeholder="dev-lab-01" /></div>
+      <div><label>显示名</label><input id="dev-name" placeholder="实验室 1 号机" /></div>
+    </div>
+    <label>客户端版本（兼容窗口协商用）</label>
+    <input id="dev-ver" value="1.2.0" />
+    <p class="small">设备的字体 / 图形后端 / 显示缩放 / 写入权限由客户端
+       <code>probe</code> 实测后回传，控制台不做任何“默认齐全”假设。</p>
+    <button onclick="registerDevice()">登记设备</button>
+  </section>
+
+  <section class="card">
+    <h2>② 配置发行通道与升级批次</h2>
+    <div class="grid2">
+      <div><label>通道名</label><input id="ch-name" value="stable" /></div>
+      <div><label>发布构建</label><select id="ch-build"></select></div>
+      <div><label>批次标签</label><input id="ch-batch" value="batch-1" /></div>
+      <div><label>批次放量比例（灰度）</label>
+        <input id="ch-pct" type="number" min="0" max="100" value="100" /></div>
+      <div><label>首帧后端门禁</label>
+        <select id="ch-backend">
+          <option value="">不限制（允许 nullfb 降级）</option>
+          <option value="x11">必须 X11 真实显示</option>
+          <option value="sdl">必须 SDL 可启动（x11/wayland/fb）</option>
+        </select></div>
+      <div><label>系统 sans 字体门禁</label>
+        <select id="ch-font"><option value="">不要求</option>
+          <option value="true">必须实测到 sans 字体</option></select></div>
+    </div>
+    <label><input type="checkbox" id="ch-paused" /> 暂停通道（清单返回无升级）</label>
+    <p><button onclick="saveChannel()">保存通道</button></p>
+  </section>
+
+  <section class="card wide">
+    <h2>③ 设备与升级状态</h2>
+    <p class="small">完成判定：只有 <b>phase=ACTIVE</b> 且收到带
+      <code>frame_sha256</code> 的首帧 receipt 才显示“升级完成”。
+      下载/校验/安装阶段只显示进度与当前阶段——<b>下载完成不等于升级完成</b>。</p>
+    <table><thead><tr>
+      <th>设备</th><th>阶段</th><th>下载/激活</th><th>实测能力摘要</th><th>交付结论</th>
+    </tr></thead><tbody id="dev-rows"><tr><td colspan="5" class="small">加载中…</td></tr></tbody></table>
+  </section>
+
+  <section class="card">
+    <h2>构建指纹</h2>
+    <table><thead><tr><th>应用/版本</th><th>build_id</th><th>包 sha256</th><th>体积</th></tr></thead>
+      <tbody id="build-rows"></tbody></table>
+  </section>
+
+  <section class="card">
+    <h2>通道</h2>
+    <table><thead><tr><th>通道</th><th>构建</th><th>批次</th><th>放量</th><th>状态</th></tr></thead>
+      <tbody id="ch-rows"></tbody></table>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+async function api(method, path, body) {
+  const r = await fetch(path, {method,
+    headers: body ? {"Content-Type":"application/json"} : undefined,
+    body: body ? JSON.stringify(body) : undefined});
+  return r.json();
+}
+async function registerDevice() {
+  await api("POST", "/api/devices/register", {
+    device_id: $("dev-id").value.trim(),
+    name: $("dev-name").value.trim(),
+    client_version: $("dev-ver").value.trim()});
+  await refresh();
+}
+async function saveChannel() {
+  const require = {};
+  if ($("ch-backend").value) require.gfx_backend = $("ch-backend").value;
+  if ($("ch-font").value) require.font_sans = true;
+  await api("POST", "/api/channels", {
+    name: $("ch-name").value.trim(),
+    build_id: $("ch-build").value || null,
+    batch: $("ch-batch").value.trim(),
+    rollout_pct: Number($("ch-pct").value),
+    paused: $("ch-paused").checked,
+    require});
+  await refresh();
+}
+function pill(status) {
+  const cls = status === "ok" ? "p-ok"
+      : (status === "warn" || status === "unknown") ? "p-warn"
+      : (status === "missing" || status === "error") ? "p-bad" : "p-mut";
+  return `<span class="pill ${cls}">${status ?? "—"}</span>`;
+}
+function esc(s){return String(s??"").replace(/[<>&]/g, c=>({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]));}
+function capability(probe) {
+  if (!probe) return '<span class="small">尚未探测</span>';
+  const row = (k, label) => {
+    const v = probe[k];
+    const st = k === "local_writes" ? v.status : v.status;
+    const extra = k === "fonts" ? (v.found ? ` sans=${esc(v.found.sans||"无")}` : "")
+      : k === "gfx_backend" ? ` backend=${esc(v.backend||"—")}`
+      : k === "display_scaling" ? ` scale=${esc(v.scale ?? "unknown")}`
+      : k === "install_writable" ? ` ${esc(v.path)}`
+      : "";
+    return `<div>${label} ${pill(st)}<span class="small">${extra}</span></div>`;
+  };
+  return row("clean_home","干净目录") + row("install_writable","安装写权限")
+    + row("local_writes","本地写入") + row("fonts","字体")
+    + row("gfx_backend","图形后端") + row("display_scaling","显示缩放")
+    + (probe.network ? row("network","网络") : "");
+}
+function progress(detail) {
+  const d = detail || {};
+  if (typeof d.bytes !== "number" || typeof d.total !== "number" || !d.total)
+    return "";
+  const pct = Math.min(100, Math.round(d.bytes * 100 / d.total));
+  return `<div class="small">${d.bytes}/${d.total} 字节</div>
+          <div class="bar"><i style="width:${pct}%"></i></div>`;
+}
+function conclusion(d) {
+  if (d.phase === "ACTIVE" && d.receipt && d.receipt.frame_sha256) {
+    return `<div class="done-banner">✅ 升级完成（首帧已验证）<br>
+      <span class="small">backend=${esc(d.receipt.backend)} ·
+      frame=${esc(d.receipt.frame_sha256.slice(0,16))}…</span></div>`;
+  }
+  if (d.phase === "ROLLEDBACK")
+    return `<div class="wait-banner">↩️ 已回退到旧版本（新版首帧未通过）</div>`;
+  if (d.phase === "FAILED")
+    return `<div class="wait-banner" style="border-color:var(--bad);color:var(--bad)">❌ 失败：${esc((d.detail||{}).message||"")}</div>`;
+  const msg = {NEW:"等待客户端探测",PROBED:"探测完成，等待预检",
+    PREFLIGHT:"预检中",DOWNLOADING:"下载中——此时<b>不算完成</b>",
+    VERIFIED:"包校验通过，尚未完成",INSTALLING:"安装中，尚未完成",
+    FIRSTFRAME:"首帧验证中，尚未完成"}[d.phase] || d.phase;
+  return `<div class="wait-banner">⏳ ${msg}</div>`
+    + progress(d.detail);
+}
+async function refresh() {
+  const s = await api("GET","/api/console-state");
+  $("build-rows").innerHTML = s.builds.map(b =>
+    `<tr><td>${esc(b.name)} ${esc(b.version)}</td>
+     <td><code>${esc(b.build_id.slice(0,12))}…</code></td>
+     <td><code>${esc(b.package_sha256.slice(0,12))}…</code></td>
+     <td>${b.package_size}</td></tr>`).join("") ||
+    '<tr><td colspan="4" class="small">暂无构建（先运行 builder）</td></tr>';
+  const sel = $("ch-build");
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">（无 / 暂停）</option>' +
+    s.builds.map(b => `<option value="${b.build_id}">${esc(b.name)} ${esc(b.version)}</option>`).join("");
+  if (cur) sel.value = cur;
+  $("ch-rows").innerHTML = s.channels.map(c =>
+    `<tr><td>${esc(c.name)}</td>
+     <td><code>${esc((c.build_id||"—").slice(0,10))}</code></td>
+     <td>${esc(c.batch)}</td><td>${c.rollout_pct}%</td>
+     <td>${c.paused
+        ? '<span class="pill p-bad">已暂停</span>'
+        : '<span class="pill p-ok">发布中</span>'}</td></tr>`).join("")
+     || '<tr><td colspan="5" class="small">尚无通道</td></tr>';
+  $("dev-rows").innerHTML = s.devices.map(d => `
+    <tr><td><b>${esc(d.name||d.id)}</b><br><span class="small">${esc(d.id)} · v${esc(d.client_version)}</span>
+      <details><summary>探测 JSON</summary><pre>${esc(JSON.stringify(d.probe,null,2))}</pre></details></td>
+    <td>${pill(d.phase==="ACTIVE"?"ok":(d.phase==="FAILED"||d.phase==="ROLLEDBACK"?"bad":"warn"))} ${esc(d.phase)}</td>
+    <td>${progress(d.detail)}</td>
+    <td>${capability(d.probe)}</td>
+    <td>${conclusion(d)}
+      <details><summary>receipt</summary><pre>${esc(JSON.stringify(d.receipt,null,2))}</pre></details></td>
+    </tr>`).join("") || '<tr><td colspan="5" class="small">尚未登记设备</td></tr>';
+  $("poll").textContent = "最近刷新 " + new Date().toLocaleTimeString();
+}
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>

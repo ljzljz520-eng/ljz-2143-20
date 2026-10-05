@@ -20,3 +20,23 @@ run: $(TARGET)
 
 clean:
 	rm -f $(TARGET)
+
+
+# ---- WDeliver 交付验证器（纯 Python 标准库） ----
+WD_PY ?= python3
+
+.PHONY: wdeliver-build wdeliver-server wdeliver-accept wdeliver-deps
+
+wdeliver-build:
+	$(WD_PY) -m wdeliver.builder.build --version 1.0.0
+	$(WD_PY) -m wdeliver.builder.build --version 1.1.0
+
+wdeliver-deps:
+	mkdir -p /tmp/wd-extract && tar -xzf packages/visual-window-app_1.1.0.wdz -C /tmp/wd-extract
+	$(WD_PY) -m wdeliver.builder.deps --payload /tmp/wd-extract 	  --package packages/visual-window-app_1.1.0.wdz
+
+wdeliver-server:
+	WDELIVER_TEST=1 $(WD_PY) -m wdeliver.server.app --port 8448
+
+wdeliver-accept:
+	$(WD_PY) tests/acceptance.py

@@ -1,0 +1,27 @@
+# 交付载荷描述。build.py 只打包这里显式声明的文件，
+# 因此开发者的工作目录、.git、构建中间产物绝不会进入安装包。
+name = "visual-window-app"
+entry = "hooks/firstframe.py"
+# 载荷允许使用的首帧后端；最终使用哪个由设备探测 × 通道策略共同决定。
+backends = ["sdl", "nullfb"]
+system_components = [
+  # 系统组件不随包携带，目标机是否具备由依赖对比与实测给结论。
+  "libsdl2-2.0-0",
+  "libsdl2-image-2.0-0 (optional: 仅 PNG 背景路径需要)",
+  "X server / Xvfb 或其他 SDL_VIDEODRIVER",
+  "fontconfig + sans-serif fonts",
+]
+files = [
+  "payload.toml",
+  "Makefile",
+  "hooks/firstframe.py",
+  "assets/fonts/bitmap_3x5.json",
+  "src/main.c",
+  "src/window.c",
+  "src/window.h",
+  "src/renderer.c",
+  "src/renderer.h",
+  "src/ppm.c",
+  "src/ppm.h",
+  # assets/background.ppm 由构建器从 assets/background.png 生成并注入
+]
